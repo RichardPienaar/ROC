@@ -1,7 +1,8 @@
 '''
 ROC curve plotter 
 
-To run:
+(c) Richard Pienaar - 2020
+University of Queensland  
 
 '''
 import ribbon
@@ -26,7 +27,7 @@ def get_prefixes():
 
 def total_bases(bfile):
     '''
-    returns count(int) of number of bases in a bedfile
+    returns count(int) of number of bases in a bedfile (bed.Bedfile)
     '''
     count = 0
     try:
@@ -59,14 +60,17 @@ def count_entries(P,entry,T=True,metric='pValue'):
 
 def get_points_to_plot(TP,TN,FP,FN,test,all,name2,bybase=True,precise=True):
     '''
-    calculates points for plotting and returns them as xs, ys [float,float,...]
+    calculates points for ROC curve plotting and returns them as xs, ys [float,float,...]
     TP (bfile) --> True Positives
     TN (bfile) --> True Negatives
     FP (bfile) --> False Positives
     FN (bfile) --> False Negatives
     all (bfile) --> All test data
-    name2 (str) --> idr / all
+    name2 (str) --> name of the experimental group
     bybase (bool) --> calc by base or by peak
+    precise (bool) --> Reports every single base when True, otherwise collapses:
+                - e.g if the region 80-86 is all Tp, precise True returns x.y values corresponding to 
+                - 80,81,82,83,84,85,86 whereas i precise is False only the vx,y values of 80 and 86 are returned (the inbetween can be inferred) 
     '''
     empty = total_bases(FN) # check for fully encompassing test data
     if bybase:
@@ -75,6 +79,7 @@ def get_points_to_plot(TP,TN,FP,FN,test,all,name2,bybase=True,precise=True):
     else:
         YDENOM=0
         XDENOM=0
+
         for entry in all:
             if TP.getOverlap(entry) != []:
                 YDENOM+=1
@@ -85,7 +90,6 @@ def get_points_to_plot(TP,TN,FP,FN,test,all,name2,bybase=True,precise=True):
                     XDENOM+=1
             else:
                 XDENOM+=1
-    
     data = [] # each entry - presort
     # for graphing
     ysum = 0 
@@ -167,8 +171,9 @@ def get_points_to_plot(TP,TN,FP,FN,test,all,name2,bybase=True,precise=True):
 def save_csv(name,points):
     '''
     Saves ROC points (from get_points_to_plot()) as csv for parsing later
+    FIXME: Maybe make not to the general directory
     '''
-    with open(name+'.csv') as csvfile:
+    with open(name+'.csv', 'w',newline='') as csvfile:
         spamwriter = csv.writer(csvfile, delimiter=',',dialect='excel')
         for e in range(len(points[0])):
             spamwriter.writerow([points[0][e],points[1][e]])
@@ -177,6 +182,7 @@ def save_csv(name,points):
 def assert_data(True_Pos,True_Neg,All,False_pos,False_Neg):
     '''
     True if bedtools operations have been performed successfully
+    True_Pos,True_Neg,All,False_pos,False_Neg - <bed.Bedfile>
     '''
     # checks files are correct (no base is labelled twice)
     if total_bases(True_Pos)+total_bases(True_Neg)+total_bases(False_pos)+total_bases(False_Neg)-total_bases(All) == 0:
@@ -206,53 +212,91 @@ def largest_test_set(prefixes):
 
     return winnerfile
 
+def name_groups(prefixes):
+    '''
+    Request user input on the exact name of each experimental group, for graphing
+    returns [str,str,str..] - the names 
+    '''
+    names =[]
+    for pref in prefixes:
+        names.append(input('Please specify this groups full name '+str(pref)+" : "))
+    return names
+
 def main():
     '''
+    Generates ROC curves from bedfiles (.bed)
+    Assuming correct folder management, should return comparitive ribbon plots of all the .bed files of each experimental group in the required subdirectories
     ''' 
     # file management stuff
     prefixes = get_prefixes()
+    names = name_groups(prefixes) # full names for graphing 
     runs = os.listdir(".\True_Positives")
     Directorynames= [".\True_Positives",".\False_Positives",".\True_Negatives",".\False_Negatives"]
-    print('loading bed files - General')
-    all = largest_test_set(prefixes)
-    for expgroup in prefixes:
-        TPs,FPs,TNs,FNs = [],[],[],[]
+    all = [] # used to infer the appropriate grouping for each run 
+
+    # check for existence of csv files already
+    try:
+        ribbon.produce_ribbons(prefixes,names)
+    
+    except: 
+        print('loading bed files - General')
+        for prefix in prefixes:
+            try:
+                all.append(bed.BedFile('.\Test_Data\\'+str(prefix)+'.bed',format='Peaks'))
+            except:
+                all.append(bed.BedFile('.\Test_Data\\'+str(prefix)+'.bed',format='idr'))
+
         # loading file steps
-        print('loading bed files - '+str(expgroup))
-        for subdir in Directorynames:
-            for bfile in runs: 
-                if str(expgroup) == str(bfile)[0:len(str(expgroup))] and str(bfile)[len(str(expgroup))] == '_':
-                    print(str(subdir)+"\\"+str(bfile))
-                    if 'idr' not in str(expgroup).lower():
-                        if subdir == Directorynames[0]:
-                            TPs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='Peaks'))
-                        elif subdir == Directorynames[1]:
-                            FPs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='Peaks'))
-                        elif subdir == Directorynames[2]:
-                            TNs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='Peaks'))
+        for expgroup in prefixes:
+            TPs,FPs,TNs,FNs = [],[],[],[]
+            print('loading bed files - '+str(expgroup))
+            for subdir in Directorynames:
+                for bfile in runs: 
+                    if str(expgroup) == str(bfile)[0:len(str(expgroup))] and str(bfile)[len(str(expgroup))] == '_':
+                        print(str(subdir)+"\\"+str(bfile))
+                        if 'idr' not in str(expgroup).lower():
+                            if subdir == Directorynames[0]:
+                                TPs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='Peaks'))
+                            elif subdir == Directorynames[1]:
+                                FPs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='Peaks'))
+                            elif subdir == Directorynames[2]:
+                                TNs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='Peaks'))
+                            else:
+                                FNs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='Peaks'))
                         else:
-                            FNs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='Peaks'))
-                    else:
-                        if subdir == Directorynames[0]:
-                            TPs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='idr'))
-                        elif subdir == Directorynames[1]:
-                            FPs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='idr'))
-                        elif subdir == Directorynames[2]:
-                            TNs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='idr'))
-                        else:
-                            FNs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='idr'))                    
+                            if subdir == Directorynames[0]:
+                                TPs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='idr'))
+                            elif subdir == Directorynames[1]:
+                                FPs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='idr'))
+                            elif subdir == Directorynames[2]:
+                                try:
+                                    TNs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='idr')) # check for basic data - resulting from bedtools
+                                except:
+                                    TNs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='simple'))
+                            else:
+                                try:
+                                    FNs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='idr'))              
+                                except:
+                                    FNs.append(bed.BedFile(str(subdir)+"\\"+str(bfile),format='simple'))              
 
-
-        try:
-            test = bed.BedFile(".\Test_data\\"+str(expgroup)+".bed",format='Peaks')
-        except:
-            test = bed.BedFile(".\Test_data\\"+str(expgroup)+".bed",format='idr')
-        # Calculation steps
-        for i in range(len(TPs)):
-            if assert_data(TPs[i],TNs[i],all,FPs[i],FNs[i]):
-                points = get_points_to_plot(TPs[i],TNs[i],FPs[i],FNs[i],test,all,expgroup,bybase=False)
-                save_csv(str(expgroup)+"_"+str(i)+'Peaks',points) # write output to csv
+            try:
+                test = bed.BedFile(".\Test_data\\"+str(expgroup)+".bed",format='Peaks')
+            except:
+                test = bed.BedFile(".\Test_data\\"+str(expgroup)+".bed",format='idr')
             
+            # Calculation steps
+            for i in range(len(TPs)):
+                for possibility in all:
+                    if assert_data(TPs[i],TNs[i],possibility,FPs[i],FNs[i]):
+                        print('calculating points - Peak level', str(expgroup), str(i))
+                        points = get_points_to_plot(TPs[i],TNs[i],FPs[i],FNs[i],test,possibility,expgroup,bybase=False) # Peak level
+                        save_csv(str(expgroup)+"_"+str(i)+'Peaks',points) # write output to csv
+                        
+                        print('calculating points - Base level', str(expgroup), str(i))
+                        points = get_points_to_plot(TPs[i],TNs[i],FPs[i],FNs[i],test,possibility,expgroup,bybase=True,precise=True) # Base level
+                        save_csv(str(expgroup)+"_"+str(i)+'Bases',points) # write output to csv
+
+        ribbon.produce_ribbons(prefixes,names) # Graph curves with newly generated data
 
 
 if __name__ == "__main__": 
