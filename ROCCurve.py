@@ -236,7 +236,7 @@ def main():
 
     # check for existence of csv files already
     try:
-        ribbon.produce_ribbons(prefixes,names)
+        ribbon.ribbon(prefixes,names)
     
     except: 
         print('loading bed files - General')
@@ -296,7 +296,7 @@ def main():
                         points = get_points_to_plot(TPs[i],TNs[i],FPs[i],FNs[i],test,possibility,expgroup,bybase=True,precise=True) # Base level
                         save_csv(str(expgroup)+"_"+str(i)+'Bases',points) # write output to csv
 
-        ribbon.produce_ribbons(prefixes,names) # Graph curves with newly generated data
+        ribbon.ribbon(prefixes,names) # Graph curves with newly generated data
 
 
 if __name__ == "__main__": 
